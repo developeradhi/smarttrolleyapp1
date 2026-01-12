@@ -3,387 +3,405 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SuperPOS Enterprise | Cloud Store</title>
+    <title>RetailMaster | Enterprise ERP</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
 
     <style>
-        /* Enterprise Dark Theme */
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; height: 100vh; overflow: hidden; }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
         
-        /* Grid Layout */
-        .pos-grid { display: grid; grid-template-columns: 260px 1fr 380px; height: 100vh; }
+        /* Layouts */
+        .login-screen { position: absolute; inset: 0; z-index: 100; background: #0f172a; display: flex; align-items: center; justify-content: center; }
+        .app-layout { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
         
-        /* UI Elements */
+        /* POS Specific */
+        .pos-layout { display: grid; grid-template-columns: 1fr 400px; height: 100%; }
+        
+        /* Utilities */
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1e293b; } ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        .scanner-active { border: 2px solid #22c55e; box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
 
-        /* Print Layout (Thermal Style) */
+        /* Print */
         @media print {
             body * { visibility: hidden; }
             #receipt-print-area, #receipt-print-area * { visibility: visible; }
-            #receipt-print-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 10px; background: white; color: black; font-family: 'Courier New', monospace; }
-            .no-print { display: none !important; }
+            #receipt-print-area { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; padding: 20px; font-family: monospace; }
         }
 
-        /* Mobile Responsive */
+        /* Mobile */
         @media (max-width: 1024px) {
-            .pos-grid { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+            .app-layout { grid-template-columns: 1fr; }
             .sidebar { display: none; }
-            .bill-panel { position: fixed; bottom: 0; left: 0; width: 100%; height: 65vh; transform: translateY(100%); transition: 0.3s; z-index: 50; border-top: 1px solid #334155; }
-            .bill-panel.open { transform: translateY(0); }
+            .pos-layout { grid-template-columns: 1fr; }
+            #bill-panel { display: none; position: fixed; bottom: 0; width: 100%; height: 70vh; z-index: 50; background: #0f172a; border-top: 2px solid #334155; }
+            #bill-panel.open { display: flex; }
         }
     </style>
 </head>
 <body>
 
-<div class="pos-grid">
-    
-    <aside class="sidebar bg-slate-900 border-r border-slate-800 flex flex-col no-print">
-        <div class="p-6 border-b border-slate-800 flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-xl text-white">
-                <i class="fa-solid fa-store"></i>
+<div id="login-view" class="login-screen">
+    <div class="w-full max-w-md p-8 glass-panel rounded-2xl shadow-2xl border-t-4 border-indigo-500">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-indigo-600 rounded-xl mx-auto flex items-center justify-center text-3xl text-white font-bold mb-4"><i class="fa-solid fa-layer-group"></i></div>
+            <h1 class="text-2xl font-bold text-white">RetailMaster ERP</h1>
+            <p class="text-slate-400">Secure Store Access</p>
+        </div>
+        <form onsubmit="handleLogin(event)" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Username</label>
+                <input type="text" id="login-user" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 outline-none" placeholder="admin">
             </div>
             <div>
-                <h1 class="font-bold text-lg leading-none text-white">SuperPOS</h1>
-                <span class="text-xs text-indigo-400">Google Cloud Ver.</span>
+                <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Password</label>
+                <input type="password" id="login-pass" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 outline-none" placeholder="••••••">
             </div>
+            <button type="submit" id="login-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition shadow-lg">LOGIN</button>
+            <p id="login-error" class="text-red-500 text-sm text-center hidden">Invalid Credentials</p>
+        </form>
+        <div class="mt-6 text-center">
+            <span id="db-status-badge" class="px-2 py-1 rounded text-xs bg-yellow-500/20 text-yellow-400">Connecting to Cloud...</span>
+        </div>
+    </div>
+</div>
+
+<div id="app-view" class="app-layout hidden">
+    
+    <aside class="bg-slate-900 border-r border-slate-800 flex flex-col sidebar">
+        <div class="p-6 border-b border-slate-800 flex items-center gap-3">
+            <div class="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center text-white font-bold">R</div>
+            <div><h2 class="font-bold text-white">RetailMaster</h2><p class="text-xs text-slate-500" id="user-role-display">Owner</p></div>
         </div>
 
         <nav class="flex-1 p-4 space-y-2">
-            <button onclick="setView('pos')" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-indigo-600 text-white font-medium transition">
-                <i class="fa-solid fa-cash-register"></i> Billing
+            <button onclick="nav('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition hidden">
+                <i class="fa-solid fa-chart-line w-5"></i> Dashboard
             </button>
-            <button onclick="setView('inventory')" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-800 text-slate-400 font-medium transition">
-                <i class="fa-solid fa-server"></i> Cloud DB
+            <button onclick="nav('pos')" id="nav-pos" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-indigo-600 text-white font-medium shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-cash-register w-5"></i> POS Terminal
+            </button>
+            <button onclick="nav('inventory')" id="nav-inventory" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition">
+                <i class="fa-solid fa-boxes-stacked w-5"></i> Inventory
+            </button>
+            <button onclick="nav('users')" id="nav-users" class="nav-item w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition hidden">
+                <i class="fa-solid fa-users w-5"></i> Staff Mgmt
             </button>
         </nav>
 
-        <div class="p-4 bg-slate-800 mt-auto">
-            <div class="flex justify-between items-center mb-1">
-                <span class="text-xs text-slate-400">SYNC STATUS</span>
-                <span id="sync-status" class="text-xs font-bold text-yellow-500">● Connecting...</span>
-            </div>
-            <div class="text-xs text-slate-500" id="clock">00:00:00</div>
+        <div class="p-4 border-t border-slate-800">
+            <button onclick="logout()" class="w-full flex items-center gap-2 text-red-400 hover:text-red-300 px-4 py-2 text-sm"><i class="fa-solid fa-power-off"></i> Logout</button>
         </div>
     </aside>
 
-    <main class="bg-slate-950 flex flex-col relative">
-        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900 no-print">
+    <main class="bg-slate-950 flex flex-col overflow-hidden">
+        <header class="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6">
             <div class="flex items-center gap-4">
-                <h2 class="font-bold text-slate-200">Terminal #1</h2>
-                <span id="scanner-badge" class="text-xs px-2 py-1 rounded bg-red-900/50 text-red-400 border border-red-800">Cam Offline</span>
+                <button class="md:hidden text-white" onclick="toggleBillPanel()"><i class="fa-solid fa-bars"></i></button>
+                <h2 class="font-bold text-white" id="page-title">Point of Sale</h2>
             </div>
-            <div class="flex gap-3">
-                <button onclick="toggleScanner()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm border border-slate-700 text-white transition">
-                    <i class="fa-solid fa-camera"></i> Scan
-                </button>
-                <button onclick="forceSync()" class="px-4 py-2 bg-blue-900/30 text-blue-400 hover:bg-blue-900/50 rounded-lg text-sm border border-blue-900/50 transition">
-                    <i class="fa-solid fa-rotate"></i> Sync
-                </button>
+            <div class="flex items-center gap-4">
+                <div class="hidden md:block text-right">
+                    <p class="text-sm font-bold text-white" id="clock">12:00 PM</p>
+                    <p class="text-xs text-slate-500" id="date">Jan 01, 2026</p>
+                </div>
+                <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white border border-slate-600">
+                    <i class="fa-solid fa-user"></i>
+                </div>
             </div>
         </header>
 
-        <div id="view-pos" class="flex-1 p-6 overflow-y-auto">
-            <div id="scanner-container" class="hidden mb-6 bg-black rounded-xl overflow-hidden border-2 border-slate-700 shadow-2xl relative h-64">
-                <div id="reader" class="w-full h-full"></div>
-                <div class="absolute inset-0 border-2 border-green-500/50 pointer-events-none m-12 rounded opacity-50"></div>
-                <div class="absolute bottom-2 w-full text-center text-xs text-white/70">Scanning...</div>
-            </div>
-
-            <div class="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-lg">
-                <label class="text-xs font-bold text-slate-400 uppercase mb-2 block">Barcode Entry</label>
-                <div class="flex gap-3">
-                    <input type="text" id="barcode-input" placeholder="Scan or type..." 
-                        class="flex-1 bg-slate-950 border border-slate-700 rounded-lg py-3 px-4 text-white font-mono focus:border-indigo-500 focus:outline-none"
-                        onkeypress="if(event.key==='Enter') manualScan()">
-                    <button onclick="manualScan()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-8 rounded-lg font-bold">ADD</button>
+        <div id="view-dashboard" class="view-section hidden p-6 overflow-y-auto">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="glass-panel p-6 rounded-xl">
+                    <p class="text-slate-400 text-sm">Total Sales Today</p>
+                    <h3 class="text-3xl font-bold text-white mt-2">₹12,450</h3>
                 </div>
-                
-                <div class="mt-6">
-                    <p class="text-xs text-slate-500 mb-2">LIVE INVENTORY (FROM GOOGLE SHEET)</p>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="quick-keys">
-                        <div class="text-slate-600 text-xs">Loading...</div>
+                <div class="glass-panel p-6 rounded-xl">
+                    <p class="text-slate-400 text-sm">Total Orders</p>
+                    <h3 class="text-3xl font-bold text-indigo-400 mt-2">45</h3>
+                </div>
+                <div class="glass-panel p-6 rounded-xl">
+                    <p class="text-slate-400 text-sm">Low Stock Items</p>
+                    <h3 class="text-3xl font-bold text-red-400 mt-2">3</h3>
+                </div>
+            </div>
+            <div class="glass-panel p-6 rounded-xl">
+                <h3 class="font-bold text-white mb-4">Sales Analytics</h3>
+                <canvas id="salesChart" height="100"></canvas>
+            </div>
+        </div>
+
+        <div id="view-pos" class="view-section h-full">
+            <div class="pos-layout">
+                <div class="p-6 flex flex-col h-full overflow-hidden">
+                    <div id="scanner-box" class="hidden shrink-0 h-64 bg-black rounded-xl relative overflow-hidden mb-6 border-2 border-slate-700">
+                        <div id="reader" class="w-full h-full"></div>
+                        <div class="absolute inset-0 border-2 border-indigo-500/50 m-12 rounded pointer-events-none"></div>
+                    </div>
+
+                    <div class="glass-panel p-4 rounded-xl flex gap-3 mb-6">
+                        <input type="text" id="barcode-input" placeholder="Scan Item..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 text-white focus:border-indigo-500 outline-none" onkeypress="if(event.key==='Enter') manualScan()">
+                        <button onclick="manualScan()" class="bg-indigo-600 px-6 py-3 rounded-lg text-white font-bold">ADD</button>
+                        <button onclick="toggleScanner()" class="bg-slate-800 px-4 rounded-lg text-white"><i class="fa-solid fa-camera"></i></button>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="inventory-grid">
+                            </div>
+                    </div>
+                </div>
+
+                <div id="bill-panel" class="bg-slate-900 border-l border-slate-800 flex flex-col">
+                    <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                        <h3 class="font-bold text-white">Current Bill</h3>
+                        <span class="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">#<span id="inv-num">1001</span></span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-4 space-y-2" id="cart-list">
+                        <div class="text-center text-slate-600 mt-10"><i class="fa-solid fa-cart-shopping text-3xl mb-2"></i><p>Cart Empty</p></div>
+                    </div>
+                    <div class="p-6 border-t border-slate-800 bg-slate-900">
+                        <div class="flex justify-between text-slate-400 mb-2"><span>Tax (10%)</span><span id="lbl-tax">0.00</span></div>
+                        <div class="flex justify-between text-2xl font-bold text-white mb-6"><span>Total</span><span>₹<span id="lbl-total">0.00</span></span></div>
+                        <button onclick="processPayment()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg">CHARGE</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="view-inventory" class="hidden flex-1 p-6 overflow-y-auto">
-            <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
-                <div class="p-4 border-b border-slate-800 flex justify-between">
-                    <h3 class="font-bold text-white">Google Sheet Data</h3>
-                    <button onclick="openAddModal()" class="text-indigo-400 text-sm hover:underline">+ Add New Item</button>
+        <div id="view-users" class="view-section hidden p-6">
+             <div class="glass-panel p-6 rounded-xl">
+                <h3 class="font-bold text-white mb-4">Add New Staff</h3>
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <input id="new-u-name" placeholder="Name" class="bg-slate-800 border border-slate-700 rounded p-2 text-white">
+                    <input id="new-u-pass" placeholder="Password" class="bg-slate-800 border border-slate-700 rounded p-2 text-white">
+                    <select id="new-u-role" class="bg-slate-800 border border-slate-700 rounded p-2 text-white">
+                        <option value="cashier">Cashier</option>
+                        <option value="admin">Admin</option>
+                    </select>
                 </div>
-                <table class="w-full text-left text-sm text-slate-300">
-                    <thead class="bg-slate-950 text-slate-400"><tr><th class="p-4">Barcode</th><th class="p-4">Name</th><th class="p-4 text-right">Price</th></tr></thead>
-                    <tbody id="inventory-list" class="divide-y divide-slate-800"></tbody>
-                </table>
+                <button onclick="addStaff()" class="bg-indigo-600 text-white px-4 py-2 rounded">Create User</button>
             </div>
         </div>
+
     </main>
-
-    <aside class="bill-panel bg-slate-900 border-l border-slate-800 flex flex-col w-full h-full no-print">
-        <div class="p-4 border-b border-slate-800 bg-slate-900">
-            <h3 class="font-bold text-slate-300">Current Invoice</h3>
-            <p class="text-xs text-slate-500">#<span id="inv-num">1001</span></p>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-2 space-y-1" id="cart-list">
-            <div class="h-full flex flex-col items-center justify-center text-slate-600 opacity-50">
-                <i class="fa-solid fa-cart-shopping text-4xl mb-2"></i>
-                <p>Empty Cart</p>
-            </div>
-        </div>
-
-        <div class="p-6 bg-slate-950 border-t border-slate-800">
-            <div class="flex justify-between text-slate-400 text-sm mb-2"><span>Tax (18%)</span><span id="lbl-tax">0.00</span></div>
-            <div class="flex justify-between items-end mb-6">
-                <span class="text-xl font-bold text-white">TOTAL</span>
-                <span class="text-4xl font-mono font-bold text-green-400">₹<span id="lbl-total">0.00</span></span>
-            </div>
-            <button onclick="openPaymentModal()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg">
-                PAY & PRINT
-            </button>
-        </div>
-    </aside>
-</div>
-
-<div id="add-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4 no-print">
-    <div class="bg-slate-900 w-full max-w-sm rounded-xl border border-slate-700 p-6">
-        <h3 class="font-bold text-white mb-4">Add to Google Cloud</h3>
-        <input id="new-code" placeholder="Barcode" class="w-full bg-slate-950 border border-slate-700 rounded p-3 mb-3 text-white">
-        <input id="new-name" placeholder="Name" class="w-full bg-slate-950 border border-slate-700 rounded p-3 mb-3 text-white">
-        <input id="new-price" type="number" placeholder="Price" class="w-full bg-slate-950 border border-slate-700 rounded p-3 mb-4 text-white">
-        <button onclick="saveToGoogle()" class="w-full bg-indigo-600 text-white py-3 rounded font-bold">Save Item</button>
-        <button onclick="document.getElementById('add-modal').classList.add('hidden')" class="w-full py-3 text-slate-500">Cancel</button>
-    </div>
-</div>
-
-<div id="payment-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4 no-print">
-    <div class="bg-slate-900 w-full max-w-sm rounded-xl border border-slate-700 p-6">
-        <h3 class="font-bold text-white mb-4">Select Payment</h3>
-        <div class="grid grid-cols-3 gap-2 mb-4">
-            <button onclick="printBill('CASH')" class="bg-slate-800 p-3 rounded hover:bg-slate-700 text-white text-sm font-bold">CASH</button>
-            <button onclick="printBill('UPI')" class="bg-slate-800 p-3 rounded hover:bg-slate-700 text-white text-sm font-bold">UPI</button>
-            <button onclick="printBill('CARD')" class="bg-slate-800 p-3 rounded hover:bg-slate-700 text-white text-sm font-bold">CARD</button>
-        </div>
-        <button onclick="document.getElementById('payment-modal').classList.add('hidden')" class="w-full py-3 text-slate-500">Cancel</button>
-    </div>
 </div>
 
 <div id="receipt-print-area" class="hidden">
-    <div style="text-align: center; width: 300px; margin: 0 auto;">
-        <h2 style="margin:0; font-size: 1.5em; font-weight: bold;">SUPER STORE</h2>
-        <p style="margin: 5px 0 15px 0; font-size: 0.8em;">Bangalore, India<br>GSTIN: 29ABCDE1234F1Z5</p>
-        <hr style="border-top: 1px dashed black;">
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:0.9em; margin-bottom:5px"><span>ITEM</span><span>AMT</span></div>
-        <div id="print-items" style="font-size:0.9em; text-align:left;"></div>
-        <hr style="border-top: 1px dashed black; margin-top:5px">
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:1.2em"><span>TOTAL</span><span id="print-total">0.00</span></div>
-        <p style="margin-top:10px; font-size:0.8em">Mode: <span id="print-mode">CASH</span><br>Date: <span id="print-date"></span></p>
-        <p style="font-weight:bold">*** THANK YOU ***</p>
-    </div>
+    <center>
+        <h2>MY SUPER STORE</h2>
+        <p>Bangalore, India</p>
+        <hr>
+    </center>
+    <div id="print-items"></div>
+    <hr>
+    <div style="display:flex; justify-content:space-between"><h3>TOTAL</h3><h3 id="print-total">0.00</h3></div>
+    <center><p>Thank You!</p></center>
 </div>
 
 <script>
-    // =========================================================
-    // CONFIGURATION - PASTE YOUR URL HERE
-    // =========================================================
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBoUKIRRFCYdUNrH7v1Hz5GX5-hfux_PNyGL_GBJ4oFFqbElWL4BZKbVIaul7VwcWF/exec"; 
-    // =========================================================
+    // ==========================================
+    // CONFIGURATION
+    // ==========================================
+    const API_URL = "https://script.google.com/macros/s/AKfycbz5AArPpMoScCHufjogzxdLMoXleSYU5kPrZ9wMN-TCi9AMTLcQooBm7K9n3lNxtldD/exec";
+    // ==========================================
 
-    let db = {};
+    let db = { products: [], users: [] };
     let cart = [];
+    let currentUser = null;
     let scanner = null;
-    let invNum = Math.floor(Math.random() * 9000);
 
-    window.onload = () => {
-        document.getElementById('inv-num').innerText = invNum;
-        document.getElementById('barcode-input').focus();
-        fetchCloudData(); // Initial Sync
+    // --- INITIALIZATION ---
+    window.onload = async () => {
+        updateTime();
+        setInterval(updateTime, 1000);
         
-        // Auto Sync every 5 seconds (Real-time simulation)
-        setInterval(fetchCloudData, 5000);
-        setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString(), 1000);
-    };
-
-    // --- 1. GOOGLE CLOUD SYNC ---
-    async function fetchCloudData() {
-        if(GOOGLE_SCRIPT_URL.includes("PASTE_YOUR")) return; // Don't run if not configured
-        
-        const status = document.getElementById('sync-status');
+        // Load Data
+        const badge = document.getElementById('db-status-badge');
         try {
-            const res = await fetch(GOOGLE_SCRIPT_URL + "?action=read");
+            if(!API_URL.includes("http")) throw new Error("Config Missing");
+            const res = await fetch(API_URL + "?action=getData");
             const data = await res.json();
             db = data;
-            
-            renderQuickKeys();
+            badge.innerText = "Cloud Connected";
+            badge.className = "px-2 py-1 rounded text-xs bg-green-500/20 text-green-400";
             renderInventory();
-            
-            status.innerText = "● Synced";
-            status.className = "text-xs font-bold text-green-400";
         } catch(e) {
+            badge.innerText = "Offline / Error";
+            badge.className = "px-2 py-1 rounded text-xs bg-red-500/20 text-red-400";
             console.error(e);
-            status.innerText = "● Error";
-            status.className = "text-xs font-bold text-red-500";
         }
-    }
+    };
 
-    async function saveToGoogle() {
-        const code = document.getElementById('new-code').value;
-        const name = document.getElementById('new-name').value;
-        const price = document.getElementById('new-price').value;
-        
-        if(!code || !name || !price) return;
+    // --- AUTHENTICATION ---
+    function handleLogin(e) {
+        e.preventDefault();
+        const u = document.getElementById('login-user').value;
+        const p = document.getElementById('login-pass').value;
 
-        const btn = document.querySelector('#add-modal button');
-        const originalText = btn.innerText;
-        btn.innerText = "Saving to Cloud...";
-        
-        // POST to Google
-        await fetch(GOOGLE_SCRIPT_URL, {
-            method: "POST",
-            body: JSON.stringify({ code, name, price })
-        });
+        // Verify against DB
+        const user = db.users.find(x => x.username === u && x.password == p);
 
-        // Instant Local Update
-        db[code] = { name, price };
-        addToCart(code);
-        
-        document.getElementById('add-modal').classList.add('hidden');
-        btn.innerText = originalText;
-        fetchCloudData(); // Force sync
-    }
-
-    function forceSync() {
-        document.getElementById('sync-status').innerText = "● Syncing...";
-        fetchCloudData();
-    }
-
-    // --- 2. SCANNER ---
-    function toggleScanner() {
-        const box = document.getElementById('scanner-container');
-        const badge = document.getElementById('scanner-badge');
-        
-        if(box.classList.contains('hidden')) {
-            box.classList.remove('hidden');
-            badge.innerText = "Init...";
+        if(user) {
+            currentUser = user;
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('app-view').classList.remove('hidden');
+            document.getElementById('user-role-display').innerText = user.name + " (" + user.role + ")";
             
-            scanner = new Html5Qrcode("reader");
-            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
-                (code) => { 
-                    new Audio('https://www.soundjay.com/buttons/beep-01a.mp3').play().catch(e=>{});
-                    processBarcode(code);
-                }
-            ).then(() => {
-                badge.innerText = "● Online";
-                badge.className = "text-xs px-2 py-1 rounded bg-green-900/50 text-green-400 border border-green-800";
-            });
+            // Role Based UI
+            if(user.role === 'admin') {
+                document.getElementById('nav-dashboard').classList.remove('hidden');
+                document.getElementById('nav-users').classList.remove('hidden');
+                initChart();
+            }
         } else {
-            if(scanner) scanner.stop().then(() => scanner.clear());
-            box.classList.add('hidden');
-            badge.innerText = "Offline";
-            badge.className = "text-xs px-2 py-1 rounded bg-red-900/50 text-red-400 border border-red-800";
+            document.getElementById('login-error').classList.remove('hidden');
         }
     }
 
-    // --- 3. BILLING LOGIC ---
+    function logout() { location.reload(); }
+
+    // --- POS LOGIC ---
     function manualScan() {
         const code = document.getElementById('barcode-input').value;
-        if(code) processBarcode(code);
-        document.getElementById('barcode-input').value = "";
-    }
-
-    function processBarcode(code) {
-        if(db[code]) {
-            addToCart(code);
+        const product = db.products.find(p => p.barcode == code);
+        
+        if(product) {
+            addToCart(product);
+            document.getElementById('barcode-input').value = "";
         } else {
-            if(confirm(`Global: Item ${code} not in Cloud DB. Add it?`)) {
-                openAddModal(code);
+            // If admin, offer to add?
+            if(currentUser.role === 'admin' && confirm("Item not found. Add to Cloud?")) {
+                const name = prompt("Product Name:");
+                const price = prompt("Price:");
+                if(name && price) addProductToCloud(code, name, price);
+            } else {
+                alert("Item not found");
             }
         }
     }
 
-    function addToCart(code) {
-        const item = db[code];
-        const exist = cart.find(x => x.code == code);
+    function addToCart(product) {
+        const exist = cart.find(x => x.barcode === product.barcode);
         if(exist) exist.qty++;
-        else cart.push({ code, ...item, qty: 1 });
+        else cart.push({...product, qty: 1});
         renderCart();
     }
 
     function renderCart() {
         const list = document.getElementById('cart-list');
-        if(cart.length === 0) {
-            list.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-slate-600 opacity-50"><i class="fa-solid fa-cart-shopping text-4xl mb-2"></i><p>Empty Cart</p></div>`;
-            updateTotals(0); return;
-        }
-
-        list.innerHTML = cart.map((x, i) => `
-            <div class="bg-slate-800 p-3 rounded flex justify-between mb-2 border border-slate-700">
-                <div><div class="font-bold text-white text-sm">${x.name}</div><div class="text-xs text-slate-400">₹${x.price} x ${x.qty}</div></div>
-                <div class="flex gap-3 items-center"><span class="font-bold text-white">₹${x.price*x.qty}</span><button onclick="cart.splice(${i},1);renderCart()" class="text-red-500"><i class="fa-solid fa-trash"></i></button></div>
+        list.innerHTML = cart.map((x,i) => `
+            <div class="flex justify-between items-center bg-slate-800 p-3 rounded mb-2">
+                <div><div class="text-white font-bold text-sm">${x.name}</div><div class="text-xs text-slate-400">${x.qty} x ${x.price}</div></div>
+                <div class="flex items-center gap-3"><span class="text-white font-bold">₹${x.qty*x.price}</span><button onclick="cart.splice(${i},1);renderCart()" class="text-red-400"><i class="fa-solid fa-trash"></i></button></div>
             </div>`).join('');
         
-        updateTotals(cart.reduce((a, b) => a + (b.price * b.qty), 0));
+        const total = cart.reduce((a,b) => a + (b.qty*b.price), 0);
+        document.getElementById('lbl-tax').innerText = (total*0.10).toFixed(2);
+        document.getElementById('lbl-total').innerText = (total*1.10).toFixed(2);
     }
 
-    function updateTotals(sub) {
-        const tax = sub * 0.18;
-        document.getElementById('lbl-tax').innerText = tax.toFixed(2);
-        document.getElementById('lbl-total').innerText = (sub + tax).toFixed(2);
-    }
-
-    // --- 4. PRINTING ---
-    function openPaymentModal() {
-        if(cart.length === 0) return alert("Cart is empty");
-        document.getElementById('payment-modal').classList.remove('hidden');
-    }
-
-    function printBill(mode) {
-        const itemsHtml = cart.map(x => `<div style="display:flex; justify-content:space-between; margin-bottom:5px"><span>${x.name} x${x.qty}</span><span>${x.price*x.qty}</span></div>`).join('');
-        document.getElementById('print-items').innerHTML = itemsHtml;
-        document.getElementById('print-total').innerText = document.getElementById('lbl-total').innerText;
-        document.getElementById('print-mode').innerText = mode;
-        document.getElementById('print-date').innerText = new Date().toLocaleString();
+    async function processPayment() {
+        if(cart.length === 0) return alert("Cart Empty");
         
-        document.getElementById('payment-modal').classList.add('hidden');
-        setTimeout(() => {
-            window.print();
-            cart = []; renderCart();
-            invNum++; document.getElementById('inv-num').innerText = invNum;
-        }, 500);
+        const total = document.getElementById('lbl-total').innerText;
+        const id = "INV" + Math.floor(Math.random()*10000);
+        
+        // Print
+        document.getElementById('print-items').innerHTML = cart.map(x => `<div>${x.name} - ${x.price*x.qty}</div>`).join('');
+        document.getElementById('print-total').innerText = total;
+        window.print();
+
+        // Save to Cloud History
+        await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "addSale", id, total, mode: "CASH", items: cart })
+        });
+
+        cart = []; renderCart();
+        alert("Transaction Saved to Cloud!");
     }
 
-    // --- 5. HELPERS ---
-    function openAddModal(code="") {
-        document.getElementById('add-modal').classList.remove('hidden');
-        document.getElementById('new-code').value = code;
-        document.getElementById('new-name').focus();
+    // --- ADMIN LOGIC ---
+    async function addProductToCloud(code, name, price) {
+        await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "addProduct", code, name, price })
+        });
+        alert("Added! Reloading data...");
+        location.reload();
     }
 
-    function renderQuickKeys() {
-        document.getElementById('quick-keys').innerHTML = Object.entries(db).slice(0,8).map(([c,i]) => 
-            `<button onclick="processBarcode('${c}')" class="bg-slate-800 p-2 rounded text-left hover:bg-indigo-900 border border-slate-700"><div class="text-xs text-slate-500">${c}</div><div class="font-bold text-white truncate">${i.name}</div></button>`
-        ).join('');
+    async function addStaff() {
+        const name = document.getElementById('new-u-name').value;
+        const pass = document.getElementById('new-u-pass').value;
+        const role = document.getElementById('new-u-role').value;
+        
+        await fetch(API_URL, {
+            method: "POST",
+            body: JSON.stringify({ action: "addUser", username: name.toLowerCase(), password: pass, role, name })
+        });
+        alert("Staff Added!");
+    }
+
+    // --- UI HELPERS ---
+    function nav(view) {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+        document.getElementById('view-'+view).classList.remove('hidden');
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('bg-indigo-600', 'text-white'));
+        document.getElementById('nav-'+view).classList.add('bg-indigo-600', 'text-white');
     }
 
     function renderInventory() {
-        document.getElementById('inventory-list').innerHTML = Object.entries(db).map(([c,i]) => `
-            <tr class="border-b border-slate-800 hover:bg-slate-800"><td class="p-3 font-mono text-slate-400">${c}</td><td class="p-3 text-white">${i.name}</td><td class="p-3 text-right text-green-400">₹${i.price}</td></tr>
-        `).join('');
+        const grid = document.getElementById('inventory-grid');
+        grid.innerHTML = db.products.map(p => `
+            <button onclick="manualScanWithCode('${p.barcode}')" class="bg-slate-800 p-4 rounded-xl hover:bg-slate-700 text-left border border-slate-700">
+                <div class="text-xs text-indigo-400 font-mono mb-1">${p.barcode}</div>
+                <div class="text-white font-bold truncate">${p.name}</div>
+                <div class="text-slate-400 text-sm mt-2">₹${p.price}</div>
+            </button>`).join('');
+    }
+    
+    function manualScanWithCode(c) { 
+        document.getElementById('barcode-input').value = c;
+        manualScan();
     }
 
-    function setView(id) {
-        ['pos', 'inventory'].forEach(v => document.getElementById('view-'+v).classList.add('hidden'));
-        document.getElementById('view-'+id).classList.remove('hidden');
+    function toggleScanner() {
+        const box = document.getElementById('scanner-box');
+        if(box.classList.contains('hidden')) {
+            box.classList.remove('hidden');
+            scanner = new Html5Qrcode("reader");
+            scanner.start({ facingMode: "environment" }, { fps: 10 }, (c) => { 
+                document.getElementById('barcode-input').value = c; manualScan(); 
+            });
+        } else {
+            if(scanner) scanner.stop();
+            box.classList.add('hidden');
+        }
+    }
+    
+    function toggleBillPanel() { document.getElementById('bill-panel').classList.toggle('open'); }
+    function updateTime() {
+        const now = new Date();
+        document.getElementById('clock').innerText = now.toLocaleTimeString();
+        document.getElementById('date').innerText = now.toLocaleDateString();
+    }
+
+    function initChart() {
+        const ctx = document.getElementById('salesChart');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                datasets: [{ label: 'Weekly Sales', data: [12, 19, 3, 5, 2, 3, 10], borderColor: '#6366f1', tension: 0.4 }]
+            },
+            options: { plugins: { legend: { display: false } }, scales: { y: { display: false } } }
+        });
     }
 </script>
-
 </body>
 </html>
